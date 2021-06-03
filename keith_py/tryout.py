@@ -1,4 +1,4 @@
-import subprocess, socket, win32clipboard, os, re, smtplib, \
+'''import subprocess, socket, win32clipboard, os, re, smtplib, \
     logging, pathlib, json, time, cv2, sounddevice, shutil
 import requests
 import browserhistory as bh
@@ -10,7 +10,7 @@ from cryptography.fernet import Fernet
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.base import MIMEBase
-from email import encoders
+from email import encoders'''
 
 
 # Keystroke Capture Funtion #
